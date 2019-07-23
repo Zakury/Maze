@@ -1,164 +1,113 @@
 import random
 
-class Cell:
-
-    def __init__(self, maze, x, y):
-        """
-        Creates the cell and sets the base variables.
-        """
-
-        # Link the cell to the maze.
-        self.maze = maze
-
-        # Sets the position of the cell in the maze.
-        self.x = x
-        self.y = y
-
-        # Whether the walls exist, in the order of top, right, bottom, left
-        self.walls = [True, True, True, True]
-
-        # If the cell has been visited.
-        self.visited = False
-
-        # If the cell is the current one.
-        self.current = False
-
-    def remove_walls(self, other_cell):
-        """
-        Remove the wall of the cell in the direction of the other cell.
-        """
-
-        # Convert the cell index into x and y coordinates.
-        other_x = other_cell.x
-        other_y = other_cell.y
-
-        # If the other cell is up, remove the top wall.
-        if self.y < other_y:
-            self.walls[0] = False
-        
-        # If the other cell is right, remove the right wall.
-        if self.x < other_x:
-            self.walls[1] = False
-
-        # If the other cell is down, remove the bottom wall.
-        if self.y > other_y:
-            self.walls[2] = False
-
-        # If the other cell is left, remove the left wall.
-        if self.x > other_x:
-            self.walls[3] = False
-        
 class Maze:
 
     def __init__(self, size):
+        """
+        Gets the sizes and creates the grid.
+        """
 
-        # Save map size.
-        self.size = size
+        # Size in only unvisited cells.
+        self.size_cells = size
+
+        # Size including walls.
+        self.size_walls = self.include_walls(size)
 
         # Create the grid.
-        self.generate_grid()
+        self.grid = [
+            # Create rows.
+            [
+                # Create individual cells.
+                # If both the X and Y of the cell are odd, the cell is unvisited.
+                # Otherwise, the cell is a wall.
+                (x % 2 and y % 2) + 1 for x in range(self.size_walls)
+            ] for y in range(self.size_walls)
+        ]
 
-        # Select the bottom left cell and create the stack.
-        self.select_cell(self.cell(0, 0))
-        self.stack = []
+        # Generate the maze over the grid.
+        self.generate_maze(self.grid)
 
-    def cell(self, x, y):
+    def include_walls(self, value):
         """
-        Get the index of a certain position in the grid array.
-        """
-
-        return self.grid[y][x]
-
-    def get_adjacent(self):
-        """
-        Get the valid adjacent cells.
+        Changes the given value into including the walls.
         """
         
-        # Create the list of valid cells.
-        valid_cells = []
+        # 2x + 1 converts a value into including walls.
+        return value * 2 + 1
 
-        def validate(x, y):
-            """
-            Check if a cell is valid.
-            """
+    def inside_grid(self, x, y):
+        """
+        Checks if the given x, y coordinates are within the grid.
+        """
 
-            # Check if the cell is inbounds. 
-            if x >= 0 and x < self.size and y >= 0 and y < self.size:
-                cell = self.cell(x, y)
-                # Check if the cell hasn't been visited
-                if not cell.visited:
-                    # Push the cell to the valid cell list.
-                    valid_cells.append(cell)
-
-        # Get the x and y values of the current cell.
-        x = self.current.x
-        y = self.current.y
-
-        # Validate the cells in the four directions.
-        validate(x, y + 1)
-        validate(x + 1, y)
-        validate(x, y - 1)
-        validate(x - 1, y)
+        # X and Y cannot be less than 0, or greater than the size.
+        return not (x < 0 or y < 0 or x > self.size_cells * 2 or y > self.size_cells * 2)
+    
+    def next_neighbor(self, x, y):
+        """
+        Picks a random unvisited cell adjacent to the given x, y coordinates.
+        """
         
-        # Return the valid cells.
-        return valid_cells
+        def validate_neighbor(neighbor):
+            """
+            Decides whether a neighbor is valid for being the next cell.
+            """
 
-    def select_cell(self, cell):
-        """
-        Select a cell index as the current one.
-        """
+            # Adds the neighbor's relative position the cell's position.
+            # The neighbors absolute position is then converted into including walls.
+            neighbor_x = self.include_walls(x + neighbor[0])
+            neighbor_y = self.include_walls(y + neighbor[1])
+            
+            # If inside the grid and unvisited.
+            return self.inside_grid(neighbor_x, neighbor_y) and self.grid[neighbor_y][neighbor_x] == 2
 
-        cell.visited = True # Mark the cell as visited
-        self.current = cell # Mark the cell as current
+        # All of the adjacent cell's positions, relative to the given cell.
+        neighbors = [[0, 1], [1, 0], [0, -1], [-1, 0]]
 
-    def generate_grid(self):
-        """
-        Generate the grid.
-        """
+        # Filter the adjacent cells on what is valid.
+        validated = list(filter(validate_neighbor, neighbors))
+        
+        # Return a random validated cell if there is one.
+        # If there isnt a valid cell, return None.
+        return random.choice(validated) if validated else None
 
-        self.grid = []
-        for y in range(self.size):
-            self.grid.append([])
-            for x in range(self.size):
-                cell = Cell(self, x, y)
-                self.grid[-1].append(cell)
-
-    def generate_maze(self):
+    def generate_maze(self, grid):
         """
-        Generate the maze using:
+        Creates the maze using recursive backtracking.
         https://en.wikipedia.org/wiki/Maze_generation_algorithm#Recursive_backtracker
         """
+        # The current cell's x and y.
+        current_x, current_y = 0, 0
 
-        def unvisited_cell(maze):
-            items = []
-            for row in self.grid:
-                for cell in row:
-                    items.append(cell.visited)
-            return any(not visited for visited in items)
+        # All the previous cells.
+        previous_cells = []
 
-        # While any unvisited cells in the grid.
-        while unvisited_cell(self):
-            # Get neighbors that has not been visited or are out of bounds.
-            adjacents = self.get_adjacent()
+        # While any unvisited cells are in the grid.
+        while any(2 in row for row in self.grid):
+            # Pick the next neighbor to go to.
+            direction = self.next_neighbor(current_x, current_y)
 
-            # If any neighbors that have not been visited or out of bounds
-            if adjacents:
-                # Choose a random neighbor.
-                next_cell = random.choice(adjacents)
+            # Convert the current cell into including the walls.
+            converted = [self.include_walls(current_x), self.include_walls(current_y)]
 
-                # Push the current cell to the stack.
-                self.stack.append(self.current)
-                
-                # Remove the wall between the current cell and the next cell.
-                self.current.remove_walls(next_cell)
-                next_cell.remove_walls(self.current)
-                
-                # Select the next cell.
-                self.select_cell(next_cell)
+            # Set the current cell to be open.
+            self.grid[converted[1]][converted[0]] = 0
 
-            # Otherwise if the stack is not empty,         
-            elif self.stack:
-                # Pop a cell from the stack and select it.
-                self.select_cell(self.stack.pop())
-        else:
-            return
+            # If there were no valid neighbors.
+            if not direction: 
+                # Go back one move.
+                current_x, current_y = previous_cells.pop()
+
+                # Restart the process
+                continue    
+
+            # Add the current position the moves list.
+            previous_cells.append([current_x, current_y])
+
+            # Move in the direction we chose.
+            current_x += direction[0]
+            current_y += direction[1]
+            
+            # Set the new cell to be open.
+            self.grid[converted[1] + direction[1]][converted[0] + direction[0]] = 0
+
